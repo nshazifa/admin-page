@@ -307,6 +307,134 @@ async function deleteOrder(userId, orderId) {
   }
 }
 
+// Order Stats 
+async function orderStats() {
+    const container = document.getElementById("ordersContainer");
+    container.innerHTML = `
+        <canvas id="ordersChart" width="400" height="200"></canvas>
+        <div id="ordersTable" style="margin-top: 40px;"></div>
+    `;
+
+    const usersRef = collection(db, "Users");
+    const usersSnapshot = await getDocs(usersRef);
+
+    const ordersPerUser = {};
+    const revenuePerProduct = {};
+    let totalOrders = 0;
+    let totalRevenue = 0;
+
+    for (const userDoc of usersSnapshot.docs) {
+        const userId = userDoc.id;
+        const ordersRef = collection(db, `Users/${userId}/Orders`);
+        const ordersSnapshot = await getDocs(ordersRef);
+
+        ordersPerUser[userId] = ordersSnapshot.size;
+        totalOrders += ordersSnapshot.size;
+
+        for (const orderDoc of ordersSnapshot.docs) {
+            const orderId = orderDoc.id;
+            const orderItemsRef = collection(db, `Users/${userId}/Orders/${orderId}/OrderItems`);
+            const orderItemsSnapshot = await getDocs(orderItemsRef);
+
+            for (const itemDoc of orderItemsSnapshot.docs) {
+                const item = itemDoc.data();
+                const itemRevenue = item.price * item.quantity;
+                totalRevenue += itemRevenue;
+
+                if (revenuePerProduct[item.name]) {
+                    revenuePerProduct[item.name] += itemRevenue;
+                } else {
+                    revenuePerProduct[item.name] = itemRevenue;
+                }
+            }
+        }
+    }
+
+    // Render Bar Chart
+    const ctx = document.getElementById('ordersChart').getContext('2d');
+    new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: Object.keys(ordersPerUser),
+            datasets: [{
+                label: 'Orders per User',
+                data: Object.values(ordersPerUser),
+                backgroundColor: 'rgba(75, 192, 192, 0.6)',
+                borderColor: 'rgba(75, 192, 192, 1)',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                title: {
+                    display: true,
+                    text: 'Orders per User'
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+            }
+        }
+    });
+
+    // Render Orders Table
+    const tableContainer = document.getElementById("ordersTable");
+    let tableHTML = `
+        <h3>Total Orders: ${totalOrders}</h3>
+        <h3>Total Revenue: $${totalRevenue.toFixed(2)}</h3>
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>User ID</th>
+                    <th>Number of Orders</th>
+                </tr>
+            </thead>
+            <tbody>
+    `;
+
+    for (const [userId, orderCount] of Object.entries(ordersPerUser)) {
+        tableHTML += `
+            <tr>
+                <td>${userId}</td>
+                <td>${orderCount}</td>
+            </tr>
+        `;
+    }
+
+    tableHTML += `
+            </tbody>
+        </table>
+        <h3>Revenue per Product</h3>
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Product Name</th>
+                    <th>Revenue</th>
+                </tr>
+            </thead>
+            <tbody>
+    `;
+
+    for (const [productName, revenue] of Object.entries(revenuePerProduct)) {
+        tableHTML += `
+            <tr>
+                <td>${productName}</td>
+                <td>$${revenue.toFixed(2)}</td>
+            </tr>
+        `;
+    }
+
+    tableHTML += `
+            </tbody>
+        </table>
+    `;
+
+    tableContainer.innerHTML = tableHTML;
+}
+window.orderStats = orderStats;
 window.manageUsers = manageUsers;
 window.viewUserOrders = viewUserOrders;
 window.deleteUser = deleteUser;
@@ -325,6 +453,7 @@ const styles = `
     .table {
         width: 100%;
         border-collapse: collapse;
+        margin-top:20px;
     }
     .table th, .table td {
         padding: 12px;
